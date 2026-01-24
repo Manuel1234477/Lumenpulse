@@ -11,6 +11,7 @@ from fetchers import NewsFetcher
 from sentiment import SentimentAnalyzer
 from trends import TrendCalculator
 from database import DatabaseService, AnalyticsRecord
+from anomaly_detector import AnomalyDetector, AnomalyResult
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class MarketAnalyzer:
         self.sentiment_analyzer = SentimentAnalyzer()
         self.trend_calculator = TrendCalculator()
         self.db_service = DatabaseService()
+        self.anomaly_detector = AnomalyDetector(window_size_hours=24, z_threshold=2.5)
 
     def run(self):
         """
@@ -56,12 +58,43 @@ class MarketAnalyzer:
             trends = self.trend_calculator.calculate_all_trends(sentiment_summary)
             trends_dict = [trend.to_dict() for trend in trends]
             
-            # Step 4: Save to Database
-            logger.info("Step 4: Saving analytics to database...")
+            # Step 4: Detect Anomalies
+            logger.info("Step 4: Detecting market anomalies...")
+            
+            # Get volume data (mock for demo - in real implementation, fetch actual volume)
+            current_volume = 1000.0  # This would come from Stellar fetcher
+            current_sentiment = sentiment_summary.get('average_compound_score', 0)
+            
+            # Detect anomalies
+            anomalies = self.anomaly_detector.detect_anomalies(
+                volume=current_volume,
+                sentiment_score=current_sentiment
+            )
+            
+            # Log anomaly results
+            anomaly_alerts = []
+            for anomaly in anomalies:
+                if anomaly.is_anomaly:
+                    logger.warning(f"🚨 ANOMALY DETECTED: {anomaly.metric_name} "
+                                 f"(Severity: {anomaly.severity_score:.2f}, "
+                                 f"Z-Score: {anomaly.z_score:.2f})")
+                    anomaly_alerts.append(anomaly.to_dict())
+                else:
+                    logger.debug(f"Normal {anomaly.metric_name} behavior "
+                               f"(Z-Score: {anomaly.z_score:.2f})")
+            
+            # Step 5: Save to Database
+            logger.info("Step 5: Saving analytics to database...")
+            
+            # Enhance record with anomaly data
+            enhanced_sentiment_data = sentiment_summary.copy()
+            enhanced_sentiment_data['anomalies_detected'] = len([a for a in anomalies if a.is_anomaly])
+            enhanced_sentiment_data['anomaly_details'] = [a.to_dict() for a in anomalies]
+            
             record = AnalyticsRecord(
                 timestamp=datetime.utcnow(),
                 news_count=len(news_items),
-                sentiment_data=sentiment_summary,
+                sentiment_data=enhanced_sentiment_data,
                 trends=trends_dict
             )
             
@@ -73,6 +106,7 @@ class MarketAnalyzer:
                 logger.info(f"  - Average sentiment: {sentiment_summary.get('average_compound_score', 0):.4f}")
                 logger.info(f"  - Positive: {sentiment_summary.get('sentiment_distribution', {}).get('positive', 0):.1%}")
                 logger.info(f"  - Negative: {sentiment_summary.get('sentiment_distribution', {}).get('negative', 0):.1%}")
+                logger.info(f"  - Anomalies detected: {len(anomaly_alerts)}")
             else:
                 logger.error("✗ Failed to save analytics to database")
             
