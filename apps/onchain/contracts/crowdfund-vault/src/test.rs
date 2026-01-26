@@ -466,7 +466,7 @@ fn test_calculate_match_multiple_contributors() {
     // Verify match is approximately 3600 (allowing for fixed-point rounding)
     // sqrt(100) ≈ 10, sqrt(400) = 20, sqrt(900) = 30
     // sum = 60, match = 3600
-    assert!(match_amount >= 3500 && match_amount <= 3700);
+    assert!((3500..=3700).contains(&match_amount));
 
     // Verify contributor count
     assert_eq!(client.get_contributor_count(&project_id), 3);
@@ -592,7 +592,7 @@ fn test_events_emission() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (client, admin, owner, user, token_client) = setup_test(&env);
+    let (client, admin, owner, _user, token_client) = setup_test(&env);
 
     // Initialize contract
     client.initialize(&admin);
@@ -666,7 +666,7 @@ fn test_multiple_contributions_same_user() {
     // Calculate match: sqrt(400) = 20, match = 20^2 = 400
     let match_amount = client.calculate_match(&project_id);
     // Should be approximately 400 (allowing for rounding)
-    assert!(match_amount >= 390 && match_amount <= 410);
+    assert!((390..=410).contains(&match_amount));
     // Deposit
     client.deposit(&user, &project_id, &500_000);
 

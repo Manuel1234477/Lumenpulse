@@ -1,6 +1,6 @@
 /// Fixed-point arithmetic utilities for quadratic funding calculations
 /// Uses a scaling factor of 1e9 (1_000_000_000) for precision
-
+///
 /// Scale factor for fixed-point arithmetic (1e9)
 const SCALE: i128 = 1_000_000_000;
 
@@ -74,6 +74,7 @@ pub fn unscale(value: i128) -> i128 {
 }
 
 /// Multiply a value by SCALE to get scaled value
+#[allow(dead_code)]
 pub fn scale(value: i128) -> i128 {
     value * SCALE
 }

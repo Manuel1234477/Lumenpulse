@@ -443,13 +443,13 @@ impl CrowdfundVaultContract {
     /// Get project balance
     pub fn get_balance(env: Env, project_id: u64) -> Result<i128, CrowdfundError> {
         // Get project to get token address
-        let project: ProjectData = env
+        let ProjectData { token_address, .. } = env
             .storage()
             .persistent()
             .get(&DataKey::Project(project_id))
             .ok_or(CrowdfundError::ProjectNotFound)?;
 
-        let balance_key = DataKey::ProjectBalance(project_id, project.token_address);
+        let balance_key = DataKey::ProjectBalance(project_id, token_address);
         Ok(env.storage().persistent().get(&balance_key).unwrap_or(0))
     }
 
@@ -526,13 +526,6 @@ impl CrowdfundVaultContract {
         if !env.storage().instance().has(&DataKey::Admin) {
             return Err(CrowdfundError::NotInitialized);
         }
-
-        // Get project to get token address
-        let project: ProjectData = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Project(project_id))
-            .ok_or(CrowdfundError::ProjectNotFound)?;
 
         // Get contributor count
         let contributor_count_key = DataKey::ContributorCount(project_id);
