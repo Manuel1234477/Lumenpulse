@@ -1206,12 +1206,12 @@ fn test_create_project_pause_unpause() {
     let _ = client.pause(&admin);
 
     let is_pause = client.require_not_paused();
-    assert_eq!(is_pause, true);
+    assert!(is_pause);
 
     let _ = client.unpause(&admin);
 
     let is_pause = client.require_not_paused();
-    assert_eq!(is_pause, false);
+    assert!(!is_pause);
 
     // Create project
     let project_id = client.create_project(
@@ -1233,7 +1233,7 @@ fn test_create_project_pause_unpause() {
     assert!(project.is_active);
 
     let is_pause = client.require_not_paused();
-    assert_eq!(is_pause, false);
+    assert!(!is_pause);
 }
 
 #[test]
@@ -1283,12 +1283,12 @@ fn test_deposit_pause_unpause() {
     let _ = client.pause(&admin);
 
     let is_pause = client.require_not_paused();
-    assert_eq!(is_pause, true);
+    assert!(is_pause);
 
     let _ = client.unpause(&admin);
 
     let is_pause = client.require_not_paused();
-    assert_eq!(is_pause, false);
+    assert!(!is_pause);
 
     // Deposit funds
     let deposit_amount: i128 = 500_000;

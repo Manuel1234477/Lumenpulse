@@ -744,7 +744,7 @@ impl CrowdfundVaultContract {
             .get(&DataKey::Paused)
             .unwrap_or(false);
 
-        if is_paused == true {
+        if is_paused {
             return Err(CrowdfundError::ContractPaused);
         }
 
@@ -799,12 +799,10 @@ impl CrowdfundVaultContract {
     }
 
     pub fn require_not_paused(env: &Env) -> bool {
-        let is_paused = env
-            .storage()
+        env.storage()
             .instance()
             .get(&DataKey::Paused)
-            .unwrap_or(false);
-        return is_paused;
+            .unwrap_or(false)
     }
 }
 
