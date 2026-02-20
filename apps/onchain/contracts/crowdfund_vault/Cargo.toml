@@ -1,10 +1,12 @@
 [package]
-name = "lumen-token"
-version = "0.1.0"
+name = "crowdfund_vault"
+version = "0.0.0"
 edition = "2021"
+publish = false
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["lib", "cdylib"]
+doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }

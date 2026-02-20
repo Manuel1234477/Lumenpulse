@@ -1,5 +1,5 @@
 [package]
-name = "contributor-registry"
+name = "contributor_registry"
 version = "0.0.0"
 edition = "2021"
 publish = false
