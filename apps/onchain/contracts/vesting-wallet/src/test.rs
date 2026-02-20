@@ -1,7 +1,7 @@
 use crate::errors::VestingError;
 use crate::{VestingWalletContract, VestingWalletContractClient};
 use soroban_sdk::{
-    testutils::{Address as _, Ledger, Events},
+    testutils::{Address as _, Events, Ledger},
     token::{StellarAssetClient, TokenClient},
     Address, Env,
 };
@@ -259,8 +259,6 @@ fn test_claim_partial_vesting() {
 
     // Verify available amount is now 0 (all available was claimed)
     assert_eq!(client.get_available_amount(&beneficiary), 0);
-
-    
 }
 
 #[test]
@@ -379,8 +377,6 @@ fn test_claim_unauthorized() {
     let result = client.try_claim(&non_beneficiary);
     assert_eq!(result, Err(Ok(VestingError::VestingNotFound)));
 }
-
-
 
 #[test]
 fn test_get_available_amount_linear_calculation() {
