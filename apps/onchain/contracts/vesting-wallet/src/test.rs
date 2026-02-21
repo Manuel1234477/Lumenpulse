@@ -1,7 +1,7 @@
 use crate::errors::VestingError;
 use crate::{VestingWalletContract, VestingWalletContractClient};
 use soroban_sdk::{
-    testutils::{Address as _, Events, Ledger},
+    testutils::{Address as _, Ledger},
     token::{StellarAssetClient, TokenClient},
     Address, Env,
 };
