@@ -20,17 +20,21 @@ from src.analytics.market_analyzer import get_explanation
 from src.anomaly_detector import AnomalyDetector
 from scheduler import AnalyticsScheduler
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("./logs/data_processor.log"),
-        logging.StreamHandler(sys.stdout),
-    ],
-)
+from src.utils.logger import setup_logger, CorrelationIdFilter
+from src.utils.metrics import API_FAILURES_TOTAL, start_metrics_server
+from pythonjsonlogger import jsonlogger
 
-logger = logging.getLogger(__name__)
+# Configure logging
+logger = setup_logger(__name__)
+os.makedirs("./logs", exist_ok=True)
+file_handler = logging.FileHandler("./logs/data_processor.log")
+formatter = jsonlogger.JsonFormatter(
+    "%(asctime)s %(levelname)s %(name)s %(correlation_id)s %(message)s",
+    rename_fields={"levelname": "level"}
+)
+file_handler.addFilter(CorrelationIdFilter())
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 # Module-level detector so it accumulates rolling window data across
 # scheduled pipeline runs (meaningful baselines build up over time).
@@ -198,6 +202,7 @@ def run_data_pipeline():
 
         traceback.print_exc()
         logger.error(error_msg, exc_info=True)
+        API_FAILURES_TOTAL.labels(method="worker", endpoint="pipeline").inc()
         return {
             "success": False,
             "error": str(e),
@@ -208,6 +213,9 @@ def run_data_pipeline():
 def start_scheduler():
     """Start the scheduled data processing service."""
     global scheduler
+
+    # Start metrics server on port 9091 for background worker
+    start_metrics_server(port=9091)
 
     logger.info("=" * 70)
     logger.info("LumenPulse Data Processing Service Starting")
