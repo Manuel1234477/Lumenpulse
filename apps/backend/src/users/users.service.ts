@@ -26,6 +26,8 @@ export class UsersService {
     private stellarService: StellarService,
   ) {}
 
+  // --- BASIC CRUD ---
+
   async create(user: Partial<User>): Promise<User> {
     const newUser = this.usersRepository.create(user);
     return this.usersRepository.save(newUser);
@@ -42,6 +44,20 @@ export class UsersService {
   async findByEmail(email: string): Promise<User | null> {
     return this.usersRepository.findOneBy({ email });
   }
+
+  /**
+   * Updates user profile data (Merged from Upstream)
+   */
+  async update(id: string, updateData: Partial<User>): Promise<User> {
+    await this.usersRepository.update(id, updateData);
+    const updatedUser = await this.usersRepository.findOneBy({ id });
+    if (!updatedUser) {
+      throw new NotFoundException(`User with id ${id} not found`);
+    }
+    return updatedUser;
+  }
+
+  // --- STELLAR ACCOUNT MANAGEMENT ---
 
   async addStellarAccount(
     userId: string,
@@ -101,6 +117,7 @@ export class UsersService {
     const savedAccount =
       await this.stellarAccountRepository.save(stellarAccount);
 
+    // Set first account as primary automatically if none exists
     if (!user.stellarPublicKey) {
       user.stellarPublicKey = dto.publicKey;
       await this.usersRepository.save(user);

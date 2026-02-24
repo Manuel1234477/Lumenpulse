@@ -10,6 +10,8 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -23,9 +25,11 @@ import { User } from './entities/user.entity';
 import { LinkStellarAccountDto } from './dto/link-stellar-account.dto';
 import { StellarAccountResponseDto } from './dto/stellar-account-response.dto';
 import { UpdateStellarAccountLabelDto } from './dto/update-stellar-account-label.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ProfileResponseDto } from './dto/profile-response.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-// Define the user type from the JWT payload
+// Unified Authenticated Request Interface
 interface RequestWithUser extends Request {
   user: {
     id: string;
@@ -35,11 +39,14 @@ interface RequestWithUser extends Request {
 }
 
 @ApiTags('users')
+@ApiBearerAuth()
 @Controller('users')
+@UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  // Existing endpoints - preserved exactly as they were
+  // --- ADMIN/GENERAL ENDPOINTS ---
+
   @Get()
   @ApiOperation({ summary: 'Get all users' })
   @ApiResponse({ status: 200, description: 'List of all users', type: [User] })
@@ -55,118 +62,127 @@ export class UsersController {
     return this.usersService.findById(id);
   }
 
-  // New protected endpoints for the authenticated user's Stellar accounts
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  // --- PROFILE MANAGEMENT (From Upstream) ---
+
+  @Get('me')
+  @ApiOperation({ summary: 'Get current user profile' })
+  async getProfile(@Req() req: RequestWithUser): Promise<ProfileResponseDto> {
+    const userId = req.user.id;
+    const user = await this.usersService.findById(userId);
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    return new ProfileResponseDto({
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      displayName: user.displayName,
+      bio: user.bio,
+      avatarUrl: user.avatarUrl,
+      stellarPublicKey: user.stellarPublicKey,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    });
+  }
+
+  @Patch('me')
+  @UsePipes(new ValidationPipe())
+  @ApiOperation({ summary: 'Update current user profile' })
+  async updateProfile(
+    @Req() req: RequestWithUser,
+    @Body() updateProfileDto: UpdateProfileDto,
+  ): Promise<ProfileResponseDto> {
+    const userId = req.user.id;
+
+    const allowedUpdates: Partial<User> = {};
+    if (updateProfileDto.displayName !== undefined)
+      allowedUpdates.displayName = updateProfileDto.displayName;
+    if (updateProfileDto.bio !== undefined)
+      allowedUpdates.bio = updateProfileDto.bio;
+    if (updateProfileDto.avatarUrl !== undefined)
+      allowedUpdates.avatarUrl = updateProfileDto.avatarUrl;
+
+    const updatedUser = await this.usersService.update(userId, allowedUpdates);
+
+    return new ProfileResponseDto({
+      id: updatedUser.id,
+      email: updatedUser.email,
+      firstName: updatedUser.firstName,
+      lastName: updatedUser.lastName,
+      displayName: updatedUser.displayName,
+      bio: updatedUser.bio,
+      avatarUrl: updatedUser.avatarUrl,
+      stellarPublicKey: updatedUser.stellarPublicKey,
+      createdAt: updatedUser.createdAt,
+      updatedAt: updatedUser.updatedAt,
+    });
+  }
+
+  // --- STELLAR ACCOUNT MANAGEMENT (From Feature Branch) ---
+
   @Post('me/accounts')
   @ApiOperation({ summary: 'Link a new Stellar account to user profile' })
-  @ApiResponse({
-    status: 201,
-    description: 'Stellar account linked successfully',
-    type: StellarAccountResponseDto,
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid public key or limit reached',
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({
-    status: 409,
-    description: 'Account already linked to another user',
-  })
+  @ApiResponse({ status: 201, type: StellarAccountResponseDto })
   async addStellarAccount(
     @Req() req: RequestWithUser,
     @Body() dto: LinkStellarAccountDto,
   ): Promise<StellarAccountResponseDto> {
-    const userId: string = req.user.id;
-    return this.usersService.addStellarAccount(userId, dto);
+    return this.usersService.addStellarAccount(req.user.id, dto);
   }
 
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
   @Get('me/accounts')
   @ApiOperation({ summary: 'Get all linked Stellar accounts for current user' })
-  @ApiResponse({
-    status: 200,
-    description: 'List of linked accounts',
-    type: [StellarAccountResponseDto],
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 200, type: [StellarAccountResponseDto] })
   async getMyStellarAccounts(
     @Req() req: RequestWithUser,
   ): Promise<StellarAccountResponseDto[]> {
-    const userId: string = req.user.id;
-    return this.usersService.getStellarAccounts(userId);
+    return this.usersService.getStellarAccounts(req.user.id);
   }
 
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
   @Get('me/accounts/:id')
   @ApiOperation({ summary: 'Get a specific Stellar account for current user' })
-  @ApiResponse({
-    status: 200,
-    description: 'Account details',
-    type: StellarAccountResponseDto,
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 404, description: 'Account not found' })
+  @ApiResponse({ status: 200, type: StellarAccountResponseDto })
   async getMyStellarAccount(
     @Req() req: RequestWithUser,
     @Param('id') accountId: string,
   ): Promise<StellarAccountResponseDto> {
-    const userId: string = req.user.id;
-    return this.usersService.getStellarAccount(userId, accountId);
+    return this.usersService.getStellarAccount(req.user.id, accountId);
   }
 
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
   @Delete('me/accounts/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Unlink a Stellar account from current user' })
-  @ApiResponse({ status: 204, description: 'Account unlinked successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 404, description: 'Account not found' })
   async removeMyStellarAccount(
     @Req() req: RequestWithUser,
     @Param('id') accountId: string,
   ): Promise<void> {
-    const userId: string = req.user.id;
-    await this.usersService.removeStellarAccount(userId, accountId);
+    await this.usersService.removeStellarAccount(req.user.id, accountId);
   }
 
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
   @Patch('me/accounts/:id/label')
   @ApiOperation({ summary: 'Update account label for current user' })
-  @ApiResponse({
-    status: 200,
-    description: 'Label updated successfully',
-    type: StellarAccountResponseDto,
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 404, description: 'Account not found' })
   async updateMyStellarAccountLabel(
     @Req() req: RequestWithUser,
     @Param('id') accountId: string,
     @Body() dto: UpdateStellarAccountLabelDto,
   ): Promise<StellarAccountResponseDto> {
-    const userId: string = req.user.id;
-    return this.usersService.updateStellarAccountLabel(userId, accountId, dto);
+    return this.usersService.updateStellarAccountLabel(
+      req.user.id,
+      accountId,
+      dto,
+    );
   }
 
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
   @Post('me/accounts/:id/primary')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Set as primary account for current user' })
-  @ApiResponse({ status: 200, description: 'Primary account set successfully' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 404, description: 'Account not found' })
   async setMyPrimaryAccount(
     @Req() req: RequestWithUser,
     @Param('id') accountId: string,
   ): Promise<void> {
-    const userId: string = req.user.id;
-    await this.usersService.setPrimaryAccount(userId, accountId);
+    await this.usersService.setPrimaryAccount(req.user.id, accountId);
   }
 }
