@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
-import { User } from 'src/entities/user.entity';
+import { User } from '../users/entities/user.entity';
 
 export interface JwtPayload {
   sub: string; // user id
@@ -13,6 +13,7 @@ export interface JwtPayload {
   iat?: number;
   exp?: number;
   email?: string;
+  role?: string;
 }
 
 @Injectable()
@@ -34,6 +35,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     const user = await this.userRepository.findOne({
       where: { id: userId },
+      // role column is selected by default
     });
 
     if (!user) {
