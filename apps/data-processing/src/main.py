@@ -15,22 +15,27 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 # Import both pipeline and scheduler
 from src.ingestion.news_fetcher import fetch_news
 from src.ingestion.stellar_fetcher import get_asset_volume, get_network_overview
+from src.validators import validate_news_article, validate_onchain_metric
 from src.analytics.market_analyzer import MarketAnalyzer, MarketData
 from src.analytics.market_analyzer import get_explanation
 from src.anomaly_detector import AnomalyDetector
 from scheduler import AnalyticsScheduler
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("./logs/data_processor.log"),
-        logging.StreamHandler(sys.stdout),
-    ],
-)
+from src.utils.logger import setup_logger, CorrelationIdFilter
+from src.utils.metrics import API_FAILURES_TOTAL, start_metrics_server
+from pythonjsonlogger import jsonlogger
 
-logger = logging.getLogger(__name__)
+# Configure logging
+logger = setup_logger(__name__)
+os.makedirs("./logs", exist_ok=True)
+file_handler = logging.FileHandler("./logs/data_processor.log")
+formatter = jsonlogger.JsonFormatter(
+    "%(asctime)s %(levelname)s %(name)s %(correlation_id)s %(message)s",
+    rename_fields={"levelname": "level"}
+)
+file_handler.addFilter(CorrelationIdFilter())
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 # Module-level detector so it accumulates rolling window data across
 # scheduled pipeline runs (meaningful baselines build up over time).
@@ -65,8 +70,20 @@ def run_data_pipeline():
         # Step 1: Fetch news data
         print("1. FETCHING CRYPTO NEWS")
         print("-" * 40)
-        news_articles = fetch_news(limit=5)
-        print(f"Fetched {len(news_articles)} news articles")
+
+        raw_news_articles = fetch_news(limit=5)
+        print(f"Fetched {len(raw_news_articles)} news articles (raw)")
+
+        # Validate and sanitize news articles
+        news_articles = []
+        for idx, article in enumerate(raw_news_articles):
+            validated = validate_news_article(article)
+            if validated:
+                news_articles.append(validated.dict())
+            else:
+                logger.warning(f"Dropped invalid news article at index {idx}")
+
+        print(f"Validated {len(news_articles)} news articles")
 
         # Calculate average sentiment (mock - in real scenario, use sentiment engine)
         if news_articles:
@@ -75,19 +92,45 @@ def run_data_pipeline():
             print(f"Mock sentiment score: {mock_sentiment:.2f}")
         else:
             mock_sentiment = 0.0
-            print("No news articles fetched, using neutral sentiment")
+            print("No valid news articles, using neutral sentiment")
 
         # Step 2: Fetch Stellar on-chain data
         print("\n2. FETCHING STELLAR ON-CHAIN DATA")
         print("-" * 40)
 
+
         # Get XLM volume for last 24 hours
-        volume_24h = get_asset_volume("XLM", hours=24)
-        print(f"XLM Volume (24h): {volume_24h['total_volume']:,.2f}")
-        print(f"Transactions: {volume_24h['transaction_count']}")
+        raw_volume_24h = get_asset_volume("XLM", hours=24)
+        validated_volume_24h = validate_onchain_metric({
+            "metric_id": "xlm_volume_24h",
+            "value": raw_volume_24h.get("total_volume", 0.0),
+            "timestamp": raw_volume_24h.get("end_time", ""),
+            "chain": "stellar",
+            "extra": raw_volume_24h,
+        })
+        if validated_volume_24h:
+            volume_24h = validated_volume_24h.dict()
+        else:
+            logger.warning("Invalid on-chain metric for 24h volume, using defaults.")
+            volume_24h = {"total_volume": 0.0, "transaction_count": 0}
+
+        print(f"XLM Volume (24h): {volume_24h.get('total_volume', 0.0):,.2f}")
+        print(f"Transactions: {volume_24h.get('transaction_count', 0)}")
 
         # Get XLM volume for last 48 hours for comparison
-        volume_48h = get_asset_volume("XLM", hours=48)
+        raw_volume_48h = get_asset_volume("XLM", hours=48)
+        validated_volume_48h = validate_onchain_metric({
+            "metric_id": "xlm_volume_48h",
+            "value": raw_volume_48h.get("total_volume", 0.0),
+            "timestamp": raw_volume_48h.get("end_time", ""),
+            "chain": "stellar",
+            "extra": raw_volume_48h,
+        })
+        if validated_volume_48h:
+            volume_48h = validated_volume_48h.dict()
+        else:
+            logger.warning("Invalid on-chain metric for 48h volume, using defaults.")
+            volume_48h = {"total_volume": 0.0}
 
         # Calculate volume change percentage
         if volume_48h["total_volume"] > 0:
@@ -198,6 +241,7 @@ def run_data_pipeline():
 
         traceback.print_exc()
         logger.error(error_msg, exc_info=True)
+        API_FAILURES_TOTAL.labels(method="worker", endpoint="pipeline").inc()
         return {
             "success": False,
             "error": str(e),
@@ -208,6 +252,9 @@ def run_data_pipeline():
 def start_scheduler():
     """Start the scheduled data processing service."""
     global scheduler
+
+    # Start metrics server on port 9091 for background worker
+    start_metrics_server(port=9091)
 
     logger.info("=" * 70)
     logger.info("LumenPulse Data Processing Service Starting")
