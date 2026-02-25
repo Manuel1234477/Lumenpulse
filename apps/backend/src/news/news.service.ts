@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { News } from './news.entity';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
