@@ -1,9 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
+import { Cron } from '@nestjs/schedule';
 import { News } from './news.entity';
 import { CreateArticleDto } from './dto/create-article.dto';
 import { UpdateArticleDto } from './dto/update-article.dto';
+import { NewsProviderService } from './news-provider.service';
+import { NewsArticleDto } from './dto/news-article.dto';
 
 interface RawOverallResult {
   average: string | null;
@@ -18,9 +21,12 @@ interface RawSourceResult {
 
 @Injectable()
 export class NewsService {
+  private readonly logger = new Logger(NewsService.name);
+
   constructor(
     @InjectRepository(News)
     private newsRepository: Repository<News>,
+    private readonly newsProviderService: NewsProviderService,
   ) {}
 
   async create(createArticleDto: CreateArticleDto): Promise<News> {
@@ -114,5 +120,67 @@ export class NewsService {
         articleCount: parseInt(r.articleCount, 10),
       })),
     };
+  }
+
+  /**
+   * Creates a new article if it doesn't already exist (based on URL).
+   * Returns the existing article if found, or the newly created article.
+   */
+  async createOrIgnore(articleDto: NewsArticleDto): Promise<News | null> {
+    // Check if article already exists by URL
+    const existingArticle = await this.findByUrl(articleDto.url);
+    if (existingArticle) {
+      return null; // Return null to indicate it was skipped
+    }
+
+    // Create new article
+    const article = this.newsRepository.create({
+      title: articleDto.title,
+      url: articleDto.url,
+      source: articleDto.source,
+      publishedAt: new Date(articleDto.publishedAt),
+      sentimentScore: null, // Will be populated by sentiment service
+    });
+
+    return this.newsRepository.save(article);
+  }
+
+  /**
+   * Scheduled job to fetch and save new articles every 15 minutes.
+   * Uses upsert logic to skip duplicates based on URL.
+   */
+  @Cron('0 */15 * * * *')
+  async fetchAndSaveArticles(): Promise<void> {
+    this.logger.log('Running scheduled news fetch job...');
+
+    try {
+      // Fetch latest articles from provider
+      const response = await this.newsProviderService.getLatestArticles({
+        limit: 50,
+        lang: 'EN',
+      });
+
+      const articles = response.articles;
+      let newCount = 0;
+      let skippedCount = 0;
+
+      // Process each article
+      for (const articleDto of articles) {
+        const result = await this.createOrIgnore(articleDto);
+        if (result) {
+          newCount++;
+        } else {
+          skippedCount++;
+        }
+      }
+
+      this.logger.log(
+        `News fetch completed. Fetched ${articles.length} articles, ${newCount} new, ${skippedCount} duplicates skipped.`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch and save articles: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
   }
 }
