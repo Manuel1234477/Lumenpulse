@@ -149,7 +149,7 @@ export class NewsService {
    * Scheduled job to fetch and save new articles every 15 minutes.
    * Uses upsert logic to skip duplicates based on URL.
    */
-  @Cron(CronExpression.EVERY_15_MINUTES)
+  @Cron('0 */15 * * * *')
   async fetchAndSaveArticles(): Promise<void> {
     this.logger.log('Running scheduled news fetch job...');
 
