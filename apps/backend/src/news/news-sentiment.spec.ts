@@ -7,6 +7,7 @@ import { AxiosResponse } from 'axios';
 import { News } from './news.entity';
 import { NewsService } from './news.service';
 import { NewsSentimentService } from './news-sentiment.services';
+import { NewsProviderService } from './news-provider.service';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -222,7 +223,14 @@ describe('NewsService - sentiment methods', () => {
 
   const mockRepo = {
     find: jest.fn(),
+    findOne: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
     createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
+  };
+
+  const mockNewsProviderService = {
+    getLatestArticles: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -232,6 +240,10 @@ describe('NewsService - sentiment methods', () => {
         {
           provide: getRepositoryToken(News),
           useValue: mockRepo,
+        },
+        {
+          provide: NewsProviderService,
+          useValue: mockNewsProviderService,
         },
       ],
     }).compile();
